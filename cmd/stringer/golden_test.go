@@ -123,6 +123,17 @@ func (i Number) String() string {
 	}
 	return _Number_name[_Number_index[i]:_Number_index[i+1]]
 }
+func (i *Number) Parse(value string) Number {
+	for l, j := uint8(len(value)), 1; j < len(_Number_index); j++ {
+		if _Number_index[j]-_Number_index[j-1] == l && value == _Number_name[_Number_index[j-1]:_Number_index[j]] {
+			*i = Number(j - 1 - (1))
+			return *i
+		}
+	}
+	// Return the zero-value by default
+	*i = Number(0)
+	return *i
+}
 `
 
 // Gaps and an offset.
@@ -212,6 +223,17 @@ func (i Num) String() string {
 		return "Num(" + strconv.FormatInt(int64(i+-2), 10) + ")"
 	}
 	return _Num_name[_Num_index[i]:_Num_index[i+1]]
+}
+func (i *Num) Parse(value string) Num {
+	for l, j := uint8(len(value)), 1; j < len(_Num_index); j++ {
+		if _Num_index[j]-_Num_index[j-1] == l && value == _Num_name[_Num_index[j-1]:_Num_index[j]] {
+			*i = Num(j - 1 - (-2))
+			return *i
+		}
+	}
+	// Return the zero-value by default
+	*i = Num(0)
+	return *i
 }
 `
 
