@@ -17,13 +17,17 @@ import (
 func Hover(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, position protocol.Position) (*protocol.Hover, error) {
 	realURI, _ := snapshot.View().ModFiles()
 	// Only get hover information on the go.mod for the view.
-	if realURI == "" || fh.Identity().URI != realURI {
+	if realURI == "" || fh.URI() != realURI {
 		return nil, nil
 	}
 	ctx, done := event.Start(ctx, "mod.Hover")
 	defer done()
 
-	file, m, why, err := snapshot.ModHandle(ctx, fh).Why(ctx)
+	mh, err := snapshot.ModHandle(ctx, fh)
+	if err != nil {
+		return nil, err
+	}
+	file, m, why, err := mh.Why(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func Hover(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, 
 	}
 	end := span.NewPoint(line, col, endPos)
 
-	spn = span.New(fh.Identity().URI, start, end)
+	spn = span.New(fh.URI(), start, end)
 	rng, err := m.Range(spn)
 	if err != nil {
 		return nil, err

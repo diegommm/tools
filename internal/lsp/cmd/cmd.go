@@ -230,11 +230,11 @@ func (app *Application) connectRemote(ctx context.Context, remote string) (*conn
 	if err != nil {
 		return nil, err
 	}
-	stream := jsonrpc2.NewHeaderStream(conn, conn)
+	stream := jsonrpc2.NewHeaderStream(conn)
 	cc := jsonrpc2.NewConn(stream)
 	connection.Server = protocol.ServerDispatcher(cc)
 	ctx = protocol.WithClient(ctx, connection.Client)
-	go cc.Run(ctx,
+	cc.Go(ctx,
 		protocol.Handlers(
 			protocol.ClientHandler(connection.Client,
 				jsonrpc2.MethodNotFound)))
@@ -495,4 +495,9 @@ func (c *connection) terminate(ctx context.Context) {
 	c.Shutdown(ctx)
 	//TODO: right now calling exit terminates the process, we should rethink that
 	//server.Exit(ctx)
+}
+
+// Implement io.Closer.
+func (c *cmdClient) Close() error {
+	return nil
 }

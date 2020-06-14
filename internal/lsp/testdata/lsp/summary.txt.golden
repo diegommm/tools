@@ -14,7 +14,7 @@ ImportCount = 8
 SuggestedFixCount = 6
 DefinitionsCount = 53
 TypeDefinitionsCount = 2
-HighlightsCount = 52
+HighlightsCount = 60
 ReferencesCount = 11
 RenamesCount = 24
 PrepareRenamesCount = 7
@@ -25,4 +25,5 @@ CaseSensitiveWorkspaceSymbolsCount = 2
 SignaturesCount = 32
 LinksCount = 8
 ImplementationsCount = 14
+RefactorRewriteCount = 5
 

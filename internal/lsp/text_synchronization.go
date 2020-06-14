@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync"
 
 	"golang.org/x/tools/internal/jsonrpc2"
 	"golang.org/x/tools/internal/lsp/protocol"
@@ -187,12 +188,12 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 	if snapshot == nil {
 		return errors.Errorf("no snapshot for %s", uri)
 	}
-	fh, err := snapshot.GetFile(uri)
+	fh, err := snapshot.GetFile(ctx, uri)
 	if err != nil {
 		return err
 	}
 	// If a file has been closed and is not on disk, clear its diagnostics.
-	if _, _, err := fh.Read(ctx); err != nil {
+	if _, err := fh.Read(); err != nil {
 		return s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
 			URI:         protocol.URIFromSpanURI(uri),
 			Diagnostics: []protocol.Diagnostic{},
@@ -203,6 +204,18 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 }
 
 func (s *Server) didModifyFiles(ctx context.Context, modifications []source.FileModification, cause ModificationSource) (map[span.URI]source.Snapshot, error) {
+	// diagnosticWG tracks outstanding diagnostic work as a result of this file
+	// modification.
+	var diagnosticWG sync.WaitGroup
+	if s.session.Options().VerboseWorkDoneProgress {
+		work := s.StartWork(ctx, DiagnosticWorkTitle(cause), "Calculating file diagnostics...", nil)
+		defer func() {
+			go func() {
+				diagnosticWG.Wait()
+				work.End(ctx, "Done.")
+			}()
+		}()
+	}
 	snapshots, err := s.session.DidModifyFiles(ctx, modifications)
 	if err != nil {
 		return nil, err
@@ -246,11 +259,11 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 				if !snapshot.IsSaved(uri) {
 					continue
 				}
-				fh, err := snapshot.GetFile(uri)
+				fh, err := snapshot.GetFile(ctx, uri)
 				if err != nil {
 					return nil, err
 				}
-				switch fh.Identity().Kind {
+				switch fh.Kind() {
 				case source.Mod:
 					newSnapshot, err := snapshot.View().Rebuild(ctx)
 					if err != nil {
@@ -262,11 +275,9 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 				}
 			}
 		}
+		diagnosticWG.Add(1)
 		go func(snapshot source.Snapshot) {
-			if s.session.Options().VerboseWorkDoneProgress {
-				work := s.StartWork(ctx, DiagnosticWorkTitle(cause), "Calculating file diagnostics...", nil)
-				defer work.End(ctx, "Done.")
-			}
+			defer diagnosticWG.Done()
 			s.diagnoseSnapshot(snapshot)
 		}(snapshot)
 	}
@@ -301,7 +312,11 @@ func (s *Server) changedText(ctx context.Context, uri span.URI, changes []protoc
 }
 
 func (s *Server) applyIncrementalChanges(ctx context.Context, uri span.URI, changes []protocol.TextDocumentContentChangeEvent) ([]byte, error) {
-	content, _, err := s.session.GetFile(uri).Read(ctx)
+	fh, err := s.session.GetFile(ctx, uri)
+	if err != nil {
+		return nil, err
+	}
+	content, err := fh.Read()
 	if err != nil {
 		return nil, fmt.Errorf("%w: file not found (%v)", jsonrpc2.ErrInternal, err)
 	}

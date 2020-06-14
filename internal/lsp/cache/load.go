@@ -93,6 +93,11 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 		return ctx.Err()
 	}
 	if err != nil {
+		// Match on common error messages. This is really hacky, but I'm not sure
+		// of any better way. This can be removed when golang/go#39164 is resolved.
+		if strings.Contains(err.Error(), "inconsistent vendoring") {
+			return source.InconsistentVendoring
+		}
 		event.Error(ctx, "go/packages.Load", err, tag.Snapshot.Of(s.ID()), tag.Directory.Of(cfg.Dir), tag.Query.Of(query), tag.PackageCount.Of(len(pkgs)))
 	} else {
 		event.Log(ctx, "go/packages.Load", tag.Snapshot.Of(s.ID()), tag.Directory.Of(cfg.Dir), tag.Query.Of(query), tag.PackageCount.Of(len(pkgs)))
@@ -100,6 +105,7 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	if len(pkgs) == 0 {
 		return err
 	}
+
 	for _, pkg := range pkgs {
 		if !containsDir || s.view.Options().VerboseOutput {
 			event.Log(ctx, "go/packages.Load", tag.Snapshot.Of(s.ID()), tag.PackagePath.Of(pkg.PkgPath), tag.Files.Of(pkg.CompiledGoFiles))
@@ -204,18 +210,28 @@ func (s *snapshot) setMetadata(ctx context.Context, pkgPath packagePath, pkg *pa
 	}
 
 	// Set the workspace packages. If any of the package's files belong to the
-	// view, then the package is considered to be a workspace package.
+	// view, then the package may be a workspace package.
 	for _, uri := range append(m.compiledGoFiles, m.goFiles...) {
-		// If the package's files are in this view, mark it as a workspace package.
-		if s.view.contains(uri) {
-			// A test variant of a package can only be loaded directly by loading
-			// the non-test variant with -test. Track the import path of the non-test variant.
-			if m.forTest != "" {
-				s.workspacePackages[m.id] = m.forTest
-			} else {
-				s.workspacePackages[m.id] = pkgPath
-			}
-			break
+		if !s.view.contains(uri) {
+			continue
+		}
+
+		// The package's files are in this view. It may be a workspace package.
+		if strings.Contains(string(uri), "/vendor/") {
+			// Vendored packages are not likely to be interesting to the user.
+			continue
+		}
+
+		switch m.forTest {
+		case "":
+			// A normal package.
+			s.workspacePackages[m.id] = pkgPath
+		case m.pkgPath:
+			// The test variant of some workspace package. To load it, we need to
+			// load the non-test variant with -test.
+			s.workspacePackages[m.id] = m.forTest
+		default:
+			// A test variant of some intermediate package. We don't care about it.
 		}
 	}
 	return m, nil

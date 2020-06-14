@@ -55,20 +55,21 @@ func testLSP(t *testing.T, exporter packagestest.Exporter) {
 		options := tests.DefaultOptions()
 		session.SetOptions(options)
 		options.Env = datum.Config.Env
-		v, snapshot, err := session.NewView(ctx, datum.Config.Dir, span.URIFromPath(datum.Config.Dir), options)
+		view, snapshot, err := session.NewView(ctx, datum.Config.Dir, span.URIFromPath(datum.Config.Dir), options)
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer view.Shutdown(ctx)
 
 		// Enable type error analyses for tests.
 		// TODO(golang/go#38212): Delete this once they are enabled by default.
 		tests.EnableAllAnalyzers(snapshot, &options)
-		v.SetOptions(ctx, options)
+		view.SetOptions(ctx, options)
 
 		// Check to see if the -modfile flag is available, this is basically a check
 		// to see if the go version >= 1.14. Otherwise, the modfile specific tests
 		// will always fail if this flag is not available.
-		for _, flag := range v.Snapshot().Config(ctx).BuildFlags {
+		for _, flag := range view.Snapshot().Config(ctx).BuildFlags {
 			if strings.Contains(flag, "-modfile=") {
 				datum.ModfileFlagAvailable = true
 				break
@@ -367,6 +368,48 @@ func (r *runner) Import(t *testing.T, spn span.Span) {
 		d := myers.ComputeEdits(uri, want, got)
 		t.Errorf("import failed for %s: %s", filename, diff.ToUnified("want", "got", want, d))
 	}
+}
+
+func (r *runner) RefactorRewrite(t *testing.T, spn span.Span, title string) {
+	uri := spn.URI()
+	m, err := r.data.Mapper(uri)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rng, err := m.Range(spn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions, err := r.server.CodeAction(r.ctx, &protocol.CodeActionParams{
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: protocol.URIFromSpanURI(uri),
+		},
+		Range: rng,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range actions {
+		// There may be more code actions available at spn (Span),
+		// we only need the one specified in the title
+		if action.Kind != protocol.RefactorRewrite || action.Title != title {
+			continue
+		}
+		res, err := applyWorkspaceEdits(r, action.Edit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for u, got := range res {
+			fixed := string(r.data.Golden(tests.SpanName(spn), u.Filename(), func() ([]byte, error) {
+				return []byte(got), nil
+			}))
+			if fixed != got {
+				t.Errorf("%s failed for %s, expected:\n%#v\ngot:\n%#v", title, u.Filename(), fixed, got)
+			}
+		}
+		return
+	}
+	t.Fatalf("expected code action %q, but got none", title)
 }
 
 func (r *runner) SuggestedFix(t *testing.T, spn span.Span, actionKinds []string) {

@@ -24,9 +24,10 @@ type Editor struct {
 
 	// Server, client, and sandbox are concurrency safe and written only
 	// at construction time, so do not require synchronization.
-	Server  protocol.Server
-	client  *Client
-	sandbox *Sandbox
+	Server     protocol.Server
+	serverConn jsonrpc2.Conn
+	client     *Client
+	sandbox    *Sandbox
 
 	// Since this editor is intended just for testing, we use very coarse
 	// locking.
@@ -80,10 +81,11 @@ func NewEditor(ws *Sandbox, config EditorConfig) *Editor {
 //
 // It returns the editor, so that it may be called as follows:
 //   editor, err := NewEditor(s).Connect(ctx, conn)
-func (e *Editor) Connect(ctx context.Context, conn *jsonrpc2.Conn, hooks ClientHooks) (*Editor, error) {
+func (e *Editor) Connect(ctx context.Context, conn jsonrpc2.Conn, hooks ClientHooks) (*Editor, error) {
+	e.serverConn = conn
 	e.Server = protocol.ServerDispatcher(conn)
 	e.client = &Client{editor: e, hooks: hooks}
-	go conn.Run(ctx,
+	conn.Go(ctx,
 		protocol.Handlers(
 			protocol.ClientHandler(e.client,
 				jsonrpc2.MethodNotFound)))
@@ -114,6 +116,24 @@ func (e *Editor) Exit(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Close issues the shutdown and exit sequence an editor should.
+func (e *Editor) Close(ctx context.Context) error {
+	if err := e.Shutdown(ctx); err != nil {
+		return err
+	}
+	if err := e.Exit(ctx); err != nil {
+		return err
+	}
+	// called close on the editor should result in the connection closing
+	select {
+	case <-e.serverConn.Done():
+		// connection closed itself
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("connection not closed: %w", ctx.Err())
+	}
 }
 
 // Client returns the LSP client for this editor.
@@ -720,4 +740,23 @@ func (e *Editor) CodeAction(ctx context.Context, path string) ([]protocol.CodeAc
 		return nil, err
 	}
 	return lens, nil
+}
+
+// Hover triggers a hover at the given position in an open buffer.
+func (e *Editor) Hover(ctx context.Context, path string, pos Pos) (*protocol.MarkupContent, Pos, error) {
+	if err := e.checkBufferPosition(path, pos); err != nil {
+		return nil, Pos{}, err
+	}
+	params := &protocol.HoverParams{}
+	params.TextDocument.URI = e.sandbox.Workdir.URI(path)
+	params.Position = pos.toProtocolPosition()
+
+	resp, err := e.Server.Hover(ctx, params)
+	if err != nil {
+		return nil, Pos{}, fmt.Errorf("hover: %w", err)
+	}
+	if resp == nil {
+		return nil, Pos{}, nil
+	}
+	return &resp.Contents, fromProtocolPosition(resp.Range.Start), nil
 }

@@ -29,11 +29,15 @@ func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]pr
 	ctx, done := event.Start(ctx, "mod.CodeLens", tag.URI.Of(realURI))
 	defer done()
 
-	fh, err := snapshot.GetFile(realURI)
+	fh, err := snapshot.GetFile(ctx, realURI)
 	if err != nil {
 		return nil, err
 	}
-	f, m, upgrades, err := snapshot.ModHandle(ctx, fh).Upgrades(ctx)
+	mh, err := snapshot.ModHandle(ctx, fh)
+	if err != nil {
+		return nil, err
+	}
+	f, m, upgrades, err := mh.Upgrades(ctx)
 	if err != nil {
 		return nil, err
 	}

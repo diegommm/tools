@@ -38,6 +38,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/unsafeptr"
 	"golang.org/x/tools/go/analysis/passes/unusedresult"
 	"golang.org/x/tools/internal/lsp/analysis/fillreturns"
+	"golang.org/x/tools/internal/lsp/analysis/fillstruct"
 	"golang.org/x/tools/internal/lsp/analysis/nonewvars"
 	"golang.org/x/tools/internal/lsp/analysis/noresultvalues"
 	"golang.org/x/tools/internal/lsp/analysis/simplifycompositelit"
@@ -61,6 +62,9 @@ const (
 
 	// CommandTidy is a gopls command to run `go mod tidy` for a module.
 	CommandTidy = "tidy"
+
+	// CommandVendor is a gopls command to run `go mod vendor` for a module.
+	CommandVendor = "vendor"
 
 	// CommandUpgradeDependency is a gopls command to upgrade a dependency.
 	CommandUpgradeDependency = "upgrade_dependency"
@@ -89,6 +93,7 @@ func DefaultOptions() Options {
 					protocol.SourceFixAll:          true,
 					protocol.SourceOrganizeImports: true,
 					protocol.QuickFix:              true,
+					protocol.RefactorRewrite:       true,
 				},
 				Mod: {
 					protocol.SourceOrganizeImports: true,
@@ -126,11 +131,12 @@ func DefaultOptions() Options {
 			TempModfile: true,
 		},
 		Hooks: Hooks{
-			ComputeEdits:       myers.ComputeEdits,
-			URLRegexp:          regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`),
-			DefaultAnalyzers:   defaultAnalyzers(),
-			TypeErrorAnalyzers: typeErrorAnalyzers(),
-			GoDiff:             true,
+			ComputeEdits:         myers.ComputeEdits,
+			URLRegexp:            regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`),
+			DefaultAnalyzers:     defaultAnalyzers(),
+			TypeErrorAnalyzers:   typeErrorAnalyzers(),
+			ConvenienceAnalyzers: convenienceAnalyzers(),
+			GoDiff:               true,
 		},
 	}
 }
@@ -239,11 +245,12 @@ type completionOptions struct {
 // Hooks contains configuration that is provided to the Gopls command by the
 // main package.
 type Hooks struct {
-	GoDiff             bool
-	ComputeEdits       diff.ComputeEdits
-	URLRegexp          *regexp.Regexp
-	DefaultAnalyzers   map[string]Analyzer
-	TypeErrorAnalyzers map[string]Analyzer
+	GoDiff               bool
+	ComputeEdits         diff.ComputeEdits
+	URLRegexp            *regexp.Regexp
+	DefaultAnalyzers     map[string]Analyzer
+	TypeErrorAnalyzers   map[string]Analyzer
+	ConvenienceAnalyzers map[string]Analyzer
 }
 
 func (o Options) AddDefaultAnalyzer(a *analysis.Analyzer) {
@@ -617,6 +624,15 @@ func typeErrorAnalyzers() map[string]Analyzer {
 			Analyzer:   undeclaredname.Analyzer,
 			enabled:    true,
 			FixesError: undeclaredname.FixesError,
+		},
+	}
+}
+
+func convenienceAnalyzers() map[string]Analyzer {
+	return map[string]Analyzer{
+		fillstruct.Analyzer.Name: {
+			Analyzer: fillstruct.Analyzer,
+			enabled:  true,
 		},
 	}
 }
