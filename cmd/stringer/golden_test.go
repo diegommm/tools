@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/tools/internal/testenv"
+	"github.com/diegommm/tools/internal/testenv"
 )
 
 // Golden represents a test case.
@@ -77,6 +77,17 @@ func (i Day) String() string {
 		return "Day(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _Day_name[_Day_index[i]:_Day_index[i+1]]
+}
+func (i *Day) Parse(value string) Day {
+	for l, j := uint8(len(value)), 1; j < len(_Day_index); j++ {
+		if _Day_index[j]-_Day_index[j-1] == l && value == _Day_name[_Day_index[j-1]:_Day_index[j]] {
+			*i = Day(j - 1)
+			return *i
+		}
+	}
+	// Return the zero-value by default
+	*i = Day(0)
+	return *i
 }
 `
 
@@ -403,6 +414,17 @@ func (i Type) String() string {
 	}
 	return _Type_name[_Type_index[i]:_Type_index[i+1]]
 }
+func (i *Type) Parse(value string) Type {
+	for l, j := uint8(len(value)), 1; j < len(_Type_index); j++ {
+		if _Type_index[j]-_Type_index[j-1] == l && value == _Type_name[_Type_index[j-1]:_Type_index[j]] {
+			*i = Type(j - 1)
+			return *i
+		}
+	}
+	// Return the zero-value by default
+	*i = Type(0)
+	return *i
+}
 `
 
 const tokens_in = `type Token int
@@ -446,6 +468,17 @@ func (i Token) String() string {
 		return "Token(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _Token_name[_Token_index[i]:_Token_index[i+1]]
+}
+func (i *Token) Parse(value string) Token {
+	for l, j := uint8(len(value)), 1; j < len(_Token_index); j++ {
+		if _Token_index[j]-_Token_index[j-1] == l && value == _Token_name[_Token_index[j-1]:_Token_index[j]] {
+			*i = Token(j - 1)
+			return *i
+		}
+	}
+	// Return the zero-value by default
+	*i = Token(0)
+	return *i
 }
 `
 

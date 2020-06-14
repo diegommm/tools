@@ -580,14 +580,14 @@ const stringOneRun = `func (i %[1]s) String() string {
 	return _%[1]s_name[_%[1]s_index[i]:_%[1]s_index[i+1]]
 }
 func (i *%[1]s) Parse(value string) %[1]s {
-	// Initialize to the zero-value
-	*i = %[1]s(0)
-	for l, j := uint%[2]d(len(value)), 1; j<len(_%[1]s_index); j++ {
-		if _%[1]s_index[j] - _%[1]s_index[j-1] == l && value == _%[1]s_name[_%[1]s_index[j-1]:_%[1]s_index[j]] {
-			*i = %[1]s(j-1)
-			break
+	for l, j := uint%[2]d(len(value)), 1; j < len(_%[1]s_index); j++ {
+		if _%[1]s_index[j]-_%[1]s_index[j-1] == l && value == _%[1]s_name[_%[1]s_index[j-1]:_%[1]s_index[j]] {
+			*i = %[1]s(j - 1)
+			return *i
 		}
 	}
+	// Return the zero-value by default
+	*i = %[1]s(0)
 	return *i
 }
 `
